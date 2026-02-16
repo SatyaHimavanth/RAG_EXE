@@ -154,6 +154,36 @@
             text-align: center;
             color: var(--text-secondary);
         }
+
+        .runtime-card {
+            background: var(--sidebar-bg);
+            border-radius: var(--radius-lg);
+            padding: 1rem 1.25rem;
+            margin-top: 1.5rem;
+        }
+
+        .runtime-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.45rem 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+
+        .runtime-row:last-child {
+            border-bottom: none;
+        }
+
+        .runtime-key {
+            color: var(--text-secondary);
+        }
+
+        .runtime-val {
+            color: var(--text-primary);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            text-align: right;
+        }
     </style>
 </head>
 
@@ -198,6 +228,11 @@
                 <h2 class="section-title">Archived Chats</h2>
                 <div class="archived-list" id="archivedList">
                     <div class="empty-state">Loading...</div>
+                </div>
+
+                <h2 class="section-title" style="margin-top:1.5rem;">Runtime Profile</h2>
+                <div class="runtime-card" id="runtimeProfileCard">
+                    <div class="empty-state" style="padding:1rem;">Loading runtime profile...</div>
                 </div>
             </div>
         </div>
@@ -267,9 +302,42 @@
             }
         }
 
+        async function loadRuntimeProfile() {
+            const card = document.getElementById('runtimeProfileCard');
+            try {
+                const res = await fetch('/api/runtime/profile');
+                const data = await res.json();
+                const profile = data.detected_profile || {};
+                const effective = data.effective || {};
+                const runtime = data.runtime || {};
+                const compat = data.compatibility || {};
+                const qwenStatus = compat.qwen3_status || (compat.qwen3_supported ? 'likely_supported' : 'likely_unsupported');
+                const qwenColor = qwenStatus === 'likely_supported'
+                    ? 'var(--success-color)'
+                    : (qwenStatus === 'unknown' ? 'var(--warning-color)' : 'var(--error-color)');
+
+                card.innerHTML = `
+                    <div class="runtime-row"><span class="runtime-key">auto_profile</span><span class="runtime-val">${data.auto_profile}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">tier</span><span class="runtime-val">${profile.tier || 'n/a'}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">available_ram_gb</span><span class="runtime-val">${profile.avail_ram_gb ?? 'n/a'}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">llama_cpp_python</span><span class="runtime-val">${runtime.llama_cpp_python || 'unknown'}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">qwen3_status</span><span class="runtime-val" style="color:${qwenColor};">${qwenStatus}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">n_ctx</span><span class="runtime-val">${effective.n_ctx}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">chat_max_tokens</span><span class="runtime-val">${effective.chat_max_tokens}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">n_threads</span><span class="runtime-val">${effective.n_threads}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">n_batch</span><span class="runtime-val">${effective.n_batch}</span></div>
+                    <div class="runtime-row"><span class="runtime-key">suggested_quant</span><span class="runtime-val">${effective.profile_suggested_quant || 'Q4_K_M'}</span></div>
+                `;
+            } catch (e) {
+                console.error("Failed to load runtime profile", e);
+                card.innerHTML = '<div class="empty-state" style="padding:1rem;">Failed to load runtime profile</div>';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadProfileStats();
             loadArchivedChats();
+            loadRuntimeProfile();
         });
     </script>
 </body>

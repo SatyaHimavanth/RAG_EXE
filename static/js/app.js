@@ -23,12 +23,15 @@ document.addEventListener('DOMContentLoaded', () => {
 function initChat() {
     loadCollections();
     loadHistory();
-
-    sendBtn.addEventListener('click', sendMessage);
+    updateSendButtonState();
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            sendMessage();
+            if (isStreaming) {
+                stopGeneration();
+            } else {
+                sendMessage();
+            }
         }
     });
 
@@ -227,6 +230,7 @@ let currentAbortController = null;
 let isStreaming = false;
 
 async function sendMessage() {
+    if (isStreaming) return;
     const content = messageInput.value.trim();
     if (!content) return;
 
@@ -250,6 +254,7 @@ async function sendMessage() {
 
     const startTime = performance.now();
     let tokenCount = 0;
+    let botResponse = "";
 
     try {
         const response = await fetch('/api/chat', {
@@ -266,7 +271,6 @@ async function sendMessage() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let botResponse = "";
         contentDiv.innerHTML = "Thinking...";
 
         while (true) {
@@ -300,10 +304,18 @@ async function sendMessage() {
         if (e.name === 'AbortError') {
             const endTime = performance.now();
             const duration = ((endTime - startTime) / 1000).toFixed(2);
-            const currentContent = contentDiv.innerHTML;
+            const metricsMarker = "\n\n[METRICS]";
+            const cleanPartial = botResponse.includes(metricsMarker)
+                ? botResponse.split(metricsMarker)[0]
+                : botResponse;
+            if (cleanPartial.trim()) {
+                messages.push({ role: 'assistant', content: cleanPartial.trim() });
+            }
+            const currentContent = contentDiv.innerHTML || marked.parse(cleanPartial || "");
             contentDiv.innerHTML = currentContent +
                 `<div class="interrupted-msg">Stopped due to User interruption</div>` +
                 `<div class="metrics-footer">Time: ${duration}s | Tokens: ~${tokenCount}</div>`;
+            loadHistory();
         } else {
             contentDiv.textContent = "Error: " + e.message;
         }
@@ -325,12 +337,11 @@ function updateSendButtonState() {
     if (isStreaming) {
         sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
         sendBtn.classList.add('stop-mode');
-        sendBtn.onclick = stopGeneration;
     } else {
         sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
         sendBtn.classList.remove('stop-mode');
-        sendBtn.onclick = sendMessage;
     }
+    sendBtn.onclick = isStreaming ? stopGeneration : sendMessage;
 }
 
 function addMessage(role, content, animate = true) {

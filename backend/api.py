@@ -3,11 +3,13 @@ from fastapi.responses import StreamingResponse
 from typing import List, Generator
 import shutil
 import os
+import sys
 import uuid
 import time
 import json
 import sqlite3
 import asyncio
+import re
 from datetime import datetime
 
 from backend.models import ChatRequest, ChatResponse, CollectionCreate, CollectionInfo, DocInfo, ChatMessage
@@ -18,6 +20,17 @@ from backend.logger import setup_logger
 
 logger = setup_logger(__name__)
 router = APIRouter()
+
+
+def _version_tuple(raw_version: str) -> tuple:
+    if not raw_version:
+        return (0, 0, 0)
+    core = raw_version.split("+", 1)[0]
+    parts = re.findall(r"\d+", core)
+    nums = [int(p) for p in parts[:3]]
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums)
 
 # --- Chat Endpoints ---
 
@@ -52,11 +65,13 @@ async def chat(request: ChatRequest):
             await asyncio.sleep(0)
                   
         if request.session_id:
+            clean_response = full_response.split("\n\n[METRICS]", 1)[0].strip()
             conn2 = get_db_connection()
             c2 = conn2.cursor()
-            c2.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
-                      (request.session_id, "assistant", full_response))
-            conn2.commit()
+            if clean_response:
+                c2.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
+                          (request.session_id, "assistant", clean_response))
+                conn2.commit()
             conn2.close()
             logger.info("Bot response saved to DB")
 
@@ -170,6 +185,53 @@ async def get_profile_stats():
         "archived_chats": archived_chats,
         "files_uploaded": files_uploaded,
         "collections": len(collections)
+    }
+
+@router.get("/runtime/profile")
+async def get_runtime_profile():
+    llama_cpp_version = "unknown"
+    try:
+        import llama_cpp
+        llama_cpp_version = getattr(llama_cpp, "__version__", "unknown")
+    except Exception:
+        pass
+
+    current = _version_tuple(llama_cpp_version)
+    if current <= (0, 3, 2):
+        qwen3_status = "likely_unsupported"
+    elif current >= (0, 3, 16):
+        qwen3_status = "likely_supported"
+    else:
+        qwen3_status = "unknown"
+
+    return {
+        "auto_profile": settings.AUTO_PROFILE,
+        "auto_profile_strict": settings.AUTO_PROFILE_STRICT,
+        "detected_profile": settings.PROFILE,
+        "effective": {
+            "n_ctx": settings.N_CTX,
+            "chat_max_tokens": settings.CHAT_MAX_TOKENS,
+            "n_threads": settings.N_THREADS,
+            "n_batch": settings.N_BATCH,
+            "summary_chunk_size": settings.SUMMARY_CHUNK_SIZE,
+            "summary_max_chunks": settings.SUMMARY_MAX_CHUNKS,
+            "n_gpu_layers": settings.N_GPU_LAYERS,
+            "chat_model_format": settings.CHAT_MODEL_FORMAT,
+            "profile_suggested_quant": settings.PROFILE_SUGGESTED_QUANT
+        },
+        "runtime": {
+            "python": sys.version.split()[0],
+            "llama_cpp_python": llama_cpp_version
+        },
+        "compatibility": {
+            "qwen3_status": qwen3_status,
+            "qwen3_supported": qwen3_status == "likely_supported",
+            "qwen3_possible_from_version": "0.3.16+ (heuristic)",
+            "notes": (
+                "Qwen3 support depends on the bundled llama.cpp in your llama-cpp-python wheel. "
+                "If unsupported, use Qwen2.5 GGUF or a newer prebuilt wheel if available for your platform."
+            )
+        }
     }
 
 # --- Collection Endpoints ---

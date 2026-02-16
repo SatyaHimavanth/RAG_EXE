@@ -2,16 +2,15 @@ from llama_cpp import Llama
 import time
 
 
-model_path = r"C:\Users\hp\Desktop\RAG_ChatBot\models\Llama-3.2-3B-Instruct-UD-Q6_K_XL.gguf"
-# model_path = "chat.nextgen"
-model_path = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
+model_path = r"models\Qwen3-4B-Q4_K_M.gguf"
+model_path = "chat.nextgen"
 
 start_time = time.time()
 llm = Llama(
         model_path=model_path,
         n_gpu_layers=-1, 
         n_ctx=4096,
-        chat_format="mistral", #llama-3, qwen, mistral
+        chat_format="qwen", #llama-3, qwen, mistral
         verbose=False
     )
 end_time = time.time()

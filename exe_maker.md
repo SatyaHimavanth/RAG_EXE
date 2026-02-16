@@ -323,6 +323,17 @@ exe = EXE(
 pyinstaller chatbot.spec --clean
 ```
 
+# 9.1️⃣ Copy runtime model files next to EXE
+
+`chat.nextgen` and `embed.nextgen` are intentionally external runtime files.
+After build, copy them (and optional `.env`) into `dist\`:
+
+```powershell
+Copy-Item .\chat.nextgen .\dist\chat.nextgen -Force
+Copy-Item .\embed.nextgen .\dist\embed.nextgen -Force
+if (Test-Path .\.env) { Copy-Item .\.env .\dist\.env -Force }
+```
+
 ---
 
 # 🔟 Final Runtime Checklist

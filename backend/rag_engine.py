@@ -1,5 +1,4 @@
 from llama_cpp import Llama
-import chromadb
 import sys
 import os
 import time
@@ -12,26 +11,41 @@ from backend.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Suppress llama.cpp verbose output
-sys.stderr = open(os.devnull, "w")
+# Do not globally suppress stderr in packaged apps; it hides fatal startup errors.
 
 # Model Configurations
 CHAT_MODEL_PATH = str(settings.CHAT_MODEL_PATH)
 EMBED_MODEL_PATH = str(settings.EMBED_MODEL_PATH)
 
 logger.info(f"Initializing Chat Model: {CHAT_MODEL_PATH}")
+if settings.AUTO_PROFILE:
+    p = settings.PROFILE
+    logger.info(
+        "Auto profile active | tier=%s | total_ram_gb=%s | avail_ram_gb=%s | cores=%s | n_ctx=%s | chat_max_tokens=%s | n_threads=%s | n_batch=%s | suggested_quant=%s",
+        p.get("tier"),
+        p.get("total_ram_gb"),
+        p.get("avail_ram_gb"),
+        p.get("logical_cores"),
+        settings.N_CTX,
+        settings.CHAT_MAX_TOKENS,
+        settings.N_THREADS,
+        settings.N_BATCH,
+        settings.PROFILE_SUGGESTED_QUANT,
+    )
 # Initialize Chat Model
 try:
     llm = Llama(
         model_path=CHAT_MODEL_PATH,
         n_gpu_layers=settings.N_GPU_LAYERS, 
         n_ctx=settings.N_CTX,
+        n_batch=settings.N_BATCH,
+        n_threads=settings.N_THREADS,
         chat_format=settings.CHAT_MODEL_FORMAT,
         verbose=False
     )
 except Exception as e:
-    logger.error("Error loading the Chat Model")
-    sys.exit(0)
+    logger.exception(f"Error loading the Chat Model: {e}")
+    raise RuntimeError(f"Failed to load chat model: {CHAT_MODEL_PATH}") from e
 
 logger.info(f"Initializing Embed Model: {EMBED_MODEL_PATH}")
 # Initialize Embed Model
@@ -39,11 +53,13 @@ try:
     embed_model = Llama(
         model_path=EMBED_MODEL_PATH,
         embedding=True,
+        n_batch=settings.N_BATCH,
+        n_threads=settings.N_THREADS,
         verbose=False
     )
 except Exception as e:
-    logger.error("Error loading the Embed Model")
-    sys.exit(0)
+    logger.exception(f"Error loading the Embed Model: {e}")
+    raise RuntimeError(f"Failed to load embedding model: {EMBED_MODEL_PATH}") from e
 
 def get_embedding(text: str) -> List[float]:
     # logger.debug(f"Generating embedding for text length: {len(text)}") # Verbose
@@ -119,7 +135,8 @@ def chat_stream(messages: List[ChatMessage], collection_name: str = None) -> Gen
     )
     formatted_messages = [{"role": "system", "content": system_prompt}]
 
-    for m in messages[-2:]:
+    # Keep recent turns for stronger continuity without blowing context.
+    for m in messages[-8:]:
         msg = m.model_dump()
         if msg['role'] == 'human':
             msg['role'] = 'user'
@@ -139,12 +156,18 @@ def chat_stream(messages: List[ChatMessage], collection_name: str = None) -> Gen
     logger.info(f"Sending request to LLM with {len(formatted_messages)} messages")
     stream = llm.create_chat_completion(
         messages=formatted_messages,
+        max_tokens=settings.CHAT_MAX_TOKENS,
+        temperature=settings.CHAT_TEMPERATURE,
+        presence_penalty=settings.CHAT_PRESENCE_PENALTY,
+        repeat_penalty=settings.CHAT_REPEAT_PENALTY,
+        stop=["</s>", "<|im_end|>", "User:", "Human:"],
         stream=True
     )
     
     for chunk in stream:
-        if 'content' in chunk['choices'][0]['delta']:
-            content = chunk['choices'][0]['delta']['content']
+        delta = chunk['choices'][0].get('delta', {})
+        if 'content' in delta:
+            content = delta['content']
             token_count += 1
             yield content
 
@@ -167,84 +190,105 @@ def update_task_progress(task_id: str, progress: int, status: str = "processing"
     except Exception as e:
         logger.error(f"Failed to update task progress: {e}")
 
-def recursive_summarize(text: str, depth: int = 0, task_id: str = None, current_progress: int = 0, progress_step: int = 100) -> str:
-    """
-    Recursively summarizes text.
-    task_id: UUID for database progress updates.
-    current_progress: Base progress for this chunk.
-    progress_step: How much this chunk contributes to total progress.
-    """
-    SUMMARY_CHUNK_SIZE = settings.SUMMARY_CHUNK_SIZE
-    
-    if len(text) <= SUMMARY_CHUNK_SIZE:
-        prompt = f"""Identify and list the key points from the text below. Do not repeat information.
-        
-            Text:
-            {text}
-
-            Key Points:
-            -"""
-        try:
-            output = llm.create_completion(
-                prompt=prompt,
-                max_tokens=500,
-                stop=["\n\n", "User:", "Human:"],
-                temperature=0.2,
-                repeat_penalty=1.2
-            )
-            
-            if task_id:
-                new_progress = min(current_progress + progress_step, 99)
-                update_task_progress(task_id, int(new_progress))
-
-            return "- " + output['choices'][0]['text'].strip()
-        except Exception as e:
-            logger.error(f"Error in base summary at depth {depth}: {e}")
-            return "Error summarizing chunk."
-
-    chunks = []
+def _split_text_for_summary(text: str, chunk_size: int, max_chunks: int) -> List[str]:
+    chunks: List[str] = []
     start = 0
-    while start < len(text):
-        end = start + SUMMARY_CHUNK_SIZE
-        if end < len(text):
-            lookback = text[end-1000:end]
-            last_period = lookback.rfind('.')
-            last_newline = lookback.rfind('\n')
-            split_point = max(last_period, last_newline)
-            
-            if split_point != -1:
-                end = (end - 1000) + split_point + 1
-        
-        chunks.append(text[start:end])
+    text_len = len(text)
+    while start < text_len and len(chunks) < max_chunks:
+        end = min(start + chunk_size, text_len)
+        if end < text_len:
+            lookback_start = max(start, end - 1200)
+            lookback = text[lookback_start:end]
+            split_point = max(lookback.rfind('\n'), lookback.rfind('. '))
+            if split_point > 0:
+                end = lookback_start + split_point + 1
+        if end <= start:
+            end = min(start + chunk_size, text_len)
+        chunks.append(text[start:end].strip())
         start = end
+    return [c for c in chunks if c]
 
-    logger.info(f"Recursive summary depth {depth}: Splitting {len(text)} chars into {len(chunks)} chunks")
-    
-    chunk_summaries = []
-    chunk_step = progress_step / len(chunks) if chunks else 0
-    
-    for i, chunk in enumerate(chunks):
-        logger.info(f"Summarizing chunk {i+1}/{len(chunks)} at depth {depth}")
-        
-        sub_progress_base = current_progress + (i * chunk_step)
-        
-        summary = recursive_summarize(chunk, depth=depth+1, task_id=task_id, current_progress=sub_progress_base, progress_step=chunk_step)
-        
-        if summary != "Error summarizing chunk.":
-            chunk_summaries.append(summary)
-        
-    if not chunk_summaries:
-        return "Could not generate summary."
 
-    combined_summary = "\n".join(chunk_summaries)
-    
-    return recursive_summarize(combined_summary, depth=depth+1, task_id=task_id, current_progress=current_progress + progress_step - 5, progress_step=5)
+def _summarize_chunk(chunk: str) -> str:
+    prompt = f"""You are writing study notes.
+Read the text and produce 5 to 8 concise bullets.
+Rules:
+- Keep concrete facts, numbers, names and outcomes.
+- Avoid fluff and repetition.
+- Each bullet should be one line.
+
+Text:
+{chunk}
+
+Bullets:
+-"""
+    output = llm.create_completion(
+        prompt=prompt,
+        max_tokens=280,
+        temperature=0.15,
+        repeat_penalty=1.15,
+        stop=["\n\n\n", "User:", "Human:"]
+    )
+    text = output['choices'][0]['text'].strip()
+    return text if text else "No useful points found for this section."
+
+
+def _finalize_summary(combined_points: str, target_words: int) -> str:
+    prompt = f"""Create a practical document summary using the bullet notes below.
+Write around {target_words} words.
+Structure:
+1) Overview (2-4 sentences)
+2) Key Points (8-14 bullets)
+3) Actionable Notes / Risks (3-6 bullets, if relevant)
+
+Bullet notes:
+{combined_points}
+
+Summary:
+"""
+    output = llm.create_completion(
+        prompt=prompt,
+        max_tokens=min(max(int(target_words * 1.6), 260), 900),
+        temperature=0.2,
+        repeat_penalty=1.15,
+        stop=["User:", "Human:"]
+    )
+    return output['choices'][0]['text'].strip()
 
 def summarize_text(text: str, task_id: str = None) -> str:
     """Public wrapper for recursive summarization."""
     try:
         logger.info(f"Starting summarization for text length: {len(text)}")
-        return recursive_summarize(text, task_id=task_id)
+        if not text or not text.strip():
+            return "No content available for summarization."
+
+        chunk_size = settings.SUMMARY_CHUNK_SIZE
+        max_chunks = settings.SUMMARY_MAX_CHUNKS
+        chunks = _split_text_for_summary(text, chunk_size, max_chunks)
+        if not chunks:
+            return "No content available for summarization."
+
+        logger.info(f"Summarization chunks prepared: {len(chunks)}")
+        chunk_summaries: List[str] = []
+
+        for i, chunk in enumerate(chunks, start=1):
+            logger.info(f"Summarizing chunk {i}/{len(chunks)}")
+            summary = _summarize_chunk(chunk)
+            chunk_summaries.append(f"Section {i}:\n{summary}")
+            if task_id:
+                progress = min(int((i / len(chunks)) * 85), 95)
+                update_task_progress(task_id, progress)
+
+        words = max(len(text.split()), 1)
+        target_words = max(140, min(int(words * 0.22), 500))
+
+        combined_points = "\n\n".join(chunk_summaries)
+        final_summary = _finalize_summary(combined_points, target_words)
+
+        if task_id:
+            update_task_progress(task_id, 99)
+
+        return final_summary if final_summary else "Could not generate summary."
     except Exception as e:
         logger.error(f"Top level summary error: {e}")
         return "Summary generation failed."
