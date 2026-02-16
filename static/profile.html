@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - RAG Chatbot</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            overflow-y: auto;
+        }
+
+        .profile-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        .profile-info h1 {
+            margin-bottom: 0.25rem;
+        }
+
+        .profile-info p {
+            color: var(--text-secondary);
+        }
+
+        .content-grid {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .left-column {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .right-column {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--sidebar-bg);
+            padding: 1.25rem;
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+
+        .stat-card .value {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .stat-card .label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        .section-title {
+            margin: 0 0 1rem;
+            color: var(--text-primary);
+        }
+
+        .archived-list {
+            background: var(--sidebar-bg);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .archived-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .archived-item:last-child {
+            border-bottom: none;
+        }
+
+        .archived-item .title {
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 250px;
+        }
+
+        .archived-item .date {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .restore-btn {
+            background: var(--accent-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+        }
+
+        .restore-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .back-link:hover {
+            color: var(--text-primary);
+        }
+
+        .empty-state {
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="profile-container">
+        <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Back to Chat</a>
+
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="profile-info">
+                <h1 id="displayUsername">test</h1>
+                <p id="displayAccount">Account: test</p>
+            </div>
+        </div>
+
+        <div class="content-grid">
+            <div class="left-column">
+                <h2 class="section-title">Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value" id="statTotalChats">0</div>
+                        <div class="label">Total Chats</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="statArchivedChats">0</div>
+                        <div class="label">Archived</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="statFilesUploaded">0</div>
+                        <div class="label">Files Uploaded</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="statCollections">0</div>
+                        <div class="label">Collections</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-column">
+                <h2 class="section-title">Archived Chats</h2>
+                <div class="archived-list" id="archivedList">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadProfileStats() {
+            try {
+                const res = await fetch('/api/profile/stats');
+                const stats = await res.json();
+
+                document.getElementById('displayUsername').textContent = stats.username || 'test';
+                document.getElementById('displayAccount').textContent = `Account: ${stats.account || 'test'}`;
+                document.getElementById('statTotalChats').textContent = stats.total_chats || 0;
+                document.getElementById('statArchivedChats').textContent = stats.archived_chats || 0;
+                document.getElementById('statFilesUploaded').textContent = stats.files_uploaded || 0;
+                document.getElementById('statCollections').textContent = stats.collections || 0;
+            } catch (e) {
+                console.error("Failed to load profile stats", e);
+            }
+        }
+
+        async function loadArchivedChats() {
+            try {
+                const res = await fetch('/api/sessions/archived');
+                const sessions = await res.json();
+
+                const list = document.getElementById('archivedList');
+                if (sessions.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No archived chats</div>';
+                    return;
+                }
+
+                list.innerHTML = '';
+                sessions.forEach(s => {
+                    const div = document.createElement('div');
+                    div.className = 'archived-item';
+                    div.innerHTML = `
+                        <div>
+                            <div class="title">${s.title || 'Untitled Chat'}</div>
+                            <div class="date">${new Date(s.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <button class="restore-btn" onclick="restoreSession(${s.id})">
+                            <i class="fas fa-undo"></i> Restore
+                        </button>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch (e) {
+                console.error("Failed to load archived chats", e);
+                document.getElementById('archivedList').innerHTML =
+                    '<div class="empty-state">Failed to load archived chats</div>';
+            }
+        }
+
+        async function restoreSession(id) {
+            try {
+                await fetch(`/api/sessions/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_archived: false })
+                });
+                loadArchivedChats();
+                loadProfileStats();
+            } catch (e) {
+                console.error("Failed to restore session", e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadProfileStats();
+            loadArchivedChats();
+        });
+    </script>
+</body>
+
+</html>

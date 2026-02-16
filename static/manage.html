@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Collections - RAG Chatbot</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            color: var(--text-primary);
+        }
+
+        .create-btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: var(--input-bg);
+            color: var(--text-primary);
+            border-radius: var(--radius-md);
+            border: 1px solid transparent;
+        }
+
+        .form-input:focus {
+            border-color: var(--accent-color);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn-cancel {
+            background-color: transparent;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="manage-container">
+        <div class="page-header-manage">
+            <div class="header-left">
+                <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Back to Chat</a>
+            </div>
+
+            <button class="create-btn" onclick="openModal('createCollectionModal')">
+                <i class="fas fa-plus"></i> Create Collection
+            </button>
+        </div>
+
+        <h1>Collections</h1>
+        <br>
+
+        <div class="card-grid" id="collectionsGrid">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- Create Collection Modal -->
+    <div class="modal" id="createCollectionModal">
+        <div class="modal-content">
+            <h2>New Collection</h2>
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" id="newCollectionName" class="form-input" placeholder="e.g. Finance_Docs">
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeModal('createCollectionModal')">Cancel</button>
+                <button class="create-btn" onclick="createCollection()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Document Modal -->
+    <div class="modal" id="uploadModal">
+        <div class="modal-content">
+            <h2>Upload to <span id="uploadTargetName"></span></h2>
+            <div class="form-group">
+                <label class="form-label">Select File</label>
+                <input type="file" id="manageFileInput" class="form-input">
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="manageSummarizeToggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Generate Summary</span>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeModal('uploadModal')">Cancel</button>
+                <button class="create-btn" onclick="uploadFileFromManage()">Upload</button>
+            </div>
+            <div id="manageUploadStatus"
+                style="margin-top: 1rem; text-align: center; color: var(--text-secondary); white-space: pre-wrap;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Modal -->
+    <div id="summaryModal" class="modal">
+        <div class="modal-content large" style="max-width: 800px;">
+            <span class="close-btn" onclick="closeModal('summaryModal')">&times;</span>
+            <h2 id="summaryModalTitle">Collection Summary</h2>
+            <div id="summaryList" class="summary-list">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCollectionsManage();
+        });
+    </script>
+</body>
+
+</html>

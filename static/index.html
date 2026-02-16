@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chatbot</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>Chat History</h3>
+                <!-- Toggle button inside sidebar header as well for mobile -->
+            </div>
+
+            <button class="new-chat-btn" onclick="startNewChat()">
+                <i class="fas fa-plus"></i> New Chat
+            </button>
+
+            <div class="search-box">
+                <input type="text" id="chatSearch" placeholder="Search chats..." oninput="debounceSearch(this.value)">
+            </div>
+
+            <div class="history-list" id="historyList">
+                <!-- Javascript will populate this -->
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="/manage" class="nav-link">
+                    <i class="fas fa-database"></i> Manage Collections
+                </a>
+                <a href="/profile" class="nav-link profile-link">
+                    <i class="fas fa-user-circle"></i> <span id="profileUsername">test</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="top-bar">
+                <button class="toggle-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <div style="flex:1;"></div>
+
+                <!-- Notification Center -->
+                <div class="notification-center">
+                    <button class="icon-btn" id="notificationBtn" onclick="toggleNotifications()">
+                        <i class="fas fa-bell"></i>
+                        <span id="notificationBadge" class="badge" style="display:none;">0</span>
+                    </button>
+                    <div id="notificationDropdown" class="notification-dropdown">
+                        <div class="notification-header">
+                            <h4>Notifications</h4>
+                            <span onclick="clearNotifications()"
+                                style="cursor:pointer; font-size:0.8rem; color:var(--accent-color);">Clear</span>
+                        </div>
+                        <div id="notificationList" class="notification-list">
+                            <div style="padding:1rem; text-align:center; color:var(--text-secondary);">No new
+                                notifications</div>
+                        </div>
+                    </div>
+                </div>
+
+                <select id="collectionSelect" class="collection-selector">
+                    <option value="">No Collection (General Chat)</option>
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+
+            <div class="chat-area" id="chatArea">
+                <div class="message bot">
+                    <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                    <div class="message-content">Hello! How can I help you today? You can select a collection to chat
+                        with your documents.</div>
+                </div>
+            </div>
+
+            <!-- File Upload Modal -->
+            <div id="filesModal" class="modal">
+                <div class="modal-content">
+                    <span class="close-btn" onclick="closeModal('filesModal')">&times;</span>
+                    <h3>Selected Files</h3>
+                    <div style="margin-bottom: 1rem;">
+                        <input type="file" id="fileInput" multiple style="display: none;">
+                        <button id="addFilesBtn" class="action-btn"><i class="fas fa-plus"></i> Add Files</button>
+                    </div>
+                    <div id="fileStagingArea" class="file-list"
+                        style="margin-bottom: 1rem; max-height: 200px; overflow-y: auto;"></div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="summarizeToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">Generate Summary</span>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button id="startUploadBtn" class="action-btn primary" style="display:none;"><i
+                                class="fas fa-cloud-upload-alt"></i> Upload to Collection</button>
+                    </div>
+                    <div id="uploadStatus" class="status-text"></div>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-box">
+                    <button class="upload-btn" id="openUploadModalBtn" title="Upload Files">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <textarea id="messageInput" rows="1" placeholder="Type your message..."></textarea>
+                    <button class="send-btn" id="sendBtn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
